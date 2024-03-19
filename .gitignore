@@ -1,0 +1,9 @@
+terraform/mykey-pair
+terraform/mykey-pair.pub
+terraform/terraform
+terraform/env
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/user_data_exec.tpl
+terraform/todo.todo

@@ -1,0 +1,181 @@
+- name: Install laravel in new server
+  hosts: all
+  become: yes
+  tasks:
+
+  - name: Setting up variables
+    set_fact:
+      php_modules: ['php-fpm', 'php-mysqlnd', 'php-curl', 'php-gd', 'php-mbstring', 'php-xml', 'php-cli', 'php-soap', 'php-intl']
+
+  - name: Yum update
+    dnf:
+      name: '*'
+      state: latest
+
+  - name: Install Apache server and MySQL
+    dnf:
+      name: "{{ item }}"
+      state: present
+    loop:
+      - 'httpd'
+
+  # Install PHP extensions
+  - name: Install PHP extensions
+    dnf:
+      name: "{{ item }}"
+      state: present
+    loop: "{{ php_modules }}"
+
+  - name: Clean metadata
+    shell: yum clean metadata
+
+  
+
+  # Download composer 
+  - name: Download Composer Installer
+    get_url:
+      url: https://getcomposer.org/installer
+      dest: /tmp/composer
+
+  # Install composer
+  - name: Install composer
+    shell: php /tmp/composer --install-dir=/usr/local/bin
+    become: yes
+
+  # Rename composer executable
+  - name: Rename composer executable
+    shell: mv /usr/local/bin/composer.phar /usr/local/bin/composer
+    become: yes
+
+  # Set permissions for composer file
+  - name: Set permissions for composer file
+    file:
+      path: /usr/local/bin/composer
+      mode: a+x
+      state: file
+    become: yes
+
+  - name: Install git
+    dnf:
+      name: git
+      state: present
+    become: yes
+
+  - name: Clone laravel codebase
+    git:
+      repo: https://babaly@bitbucket.org/babaly/bnb_comply_back.git
+      dest: /var/www/bnb_back
+    become: yes
+
+  - name: Install Docker on the server
+    become: yes
+    dnf:
+      name: docker
+      state: present
+
+  - name: Start and enable Docker service
+    become: yes
+    service:
+      name: docker
+      state: started
+      enabled: yes
+
+  # Other tasks as per your existing playbook
+
+  - name: Build Docker image for Laravel app
+    become: yes
+    command: "docker build -t laravel-app /var/www/bnb_back"
+
+  - name: Run the Docker container for Laravel app
+    become: yes
+    command: "docker run -d --name laravel-app-container -p 80:80 laravel-app"
+
+  # Other tasks as per your existing playbook
+
+    
+  - name: Set permissions for directories
+    file:
+      path: /var/www/bnb_back
+      owner: root
+      group: apache
+      state: directory
+      mode: "2775"
+
+  - name: set permissions for Laravel storage folder
+    file:
+      path: /var/www/bnb_back/storage
+      state: directory
+      recurse: yes
+      mode: "0755"
+    become: yes
+
+  - name: Take ownership of bnb_back folder
+    file:
+      path: /var/www/bnb_back
+      owner: "{{ ansible_effective_user_id }}"
+      group: "{{ ansible_effective_group_id }}"
+    become: yes
+
+  - name: Set permissions for Laravel storage folder
+    file:
+      path: /var/www/bnb_back/storage
+      owner: root
+      group: apache
+      recurse: yes
+      state: directory
+      mode: "2775"
+    become: yes
+
+  - name: Install laravel dependencies
+    composer:
+      command: update
+      working_dir: /var/www/bnb_back
+    become: yes
+
+  - name: Copy env file
+    copy:
+      src: /var/www/bnb_back/.env.example
+      dest: /var/www/bnb_back/.env
+      owner: "{{ ansible_effective_user_id }}"
+      group: "{{ ansible_effective_group_id }}"
+      mode: "0644"
+    become: yes
+
+  - name: Copy apache config
+    copy:
+      src: ansible/app.conf
+      dest: /etc/apache2/sites-available/bnb_back.conf
+      owner: "{{ ansible_effective_user_id }}"
+      group: "{{ ansible_effective_group_id }}"
+      mode: "0644"
+    become: yes
+
+  - name: Set server name
+    replace:
+      path: /etc/apache2/sites-available/bnb_back.conf
+      regexp: "$SERVER_NAME"
+      replace: "{{ ansible_host }}"
+    become: yes
+
+  - name: Enable the new config
+    shell: |
+      a2ensite bnb_back.conf
+      a2dissite 000-default.conf
+      a2enmod rewrite
+      service apache2 restart
+    become: yes
+
+  - name: Setup laravel
+    shell: |
+      cd /var/www/bnb_back
+      php artisan key:generate
+    become: yes
+
+  # Apache server started
+  - name: Services started   
+    service:
+      name: "{{ item }}"
+      state: restarted
+      enabled: yes
+    loop:
+      - 'httpd'

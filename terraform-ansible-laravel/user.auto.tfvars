@@ -1,0 +1,1 @@
+database_password = "Bnb$kaled1$" //password for user database

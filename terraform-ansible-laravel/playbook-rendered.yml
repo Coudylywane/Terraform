@@ -1,0 +1,148 @@
+- name: Install wordpress in new server
+  hosts: all
+  become: yes
+ 
+    
+  tasks:
+
+  - name: Setting up variables
+    set_fact:
+      php_modules: [  'php-fpm','php-mysqlnd', 'php-curl', 'php-gd', 'php-mbstring', 'php-xml', 'php-xmlrpc', 'php-soap', 'php-intl', 'php-zip' ]
+
+      #MySQL Settings to be rendered by terraform
+      mysql_rds: bnbcomply.cnxnnjjfpwxu.us-east-2.rds.amazonaws.com  
+      mysql_db: bnb_db
+      mysql_user: bnbcomply
+      mysql_password: Bnb$kaled1$
+
+  - name: Yum update
+    dnf:
+      name: '*'
+      state: latest
+
+  - name: install Apache server
+    dnf: name={{ item }} state=present
+    loop: [ 'httpd','mysql']    
+      
+ #installing php using linux-extra
+  
+  - name: Installing PHP
+    shell: amazon-linux-extras enable php8.1
+
+  - name: Clean metadata
+    shell: yum clean metadata
+
+
+  # install php extension
+  - name: install php extensions
+    dnf: name={{ item }} state=present
+    loop: "{{ php_modules }}"
+
+
+  - name: Set permissions for directories
+    shell: "/usr/bin/find /var/www/html/ -type d -exec chmod 2775 {} \\;"
+    
+
+  - name: Set permissions for files
+    shell: "/usr/bin/find /var/www/html/ -type f -exec chmod 0664 {} \\;"   
+
+  # Download composer 
+  - name: download composer installer
+    get_url:
+        url: https://getcomposer.org/installer
+    dest: /tmp/composer
+
+  # Install composer
+  - name: install composer
+    shell: php /tmp/composer --install-dir=/usr/local/bin
+    become: yes
+
+  # Rename composer executable
+  - name: rename composer executable
+    shell: mv /usr/local/bin/composer.phar /usr/local/bin/composer
+    become: yes
+
+  # Set permissions for composer file
+  - name: set permissions for composer file
+    file:
+        path: /usr/local/bin/composer
+        mode: a+x
+        state: file
+    become: yes
+
+  # Clone laravel project
+  - name: clone laravel codebase
+    git:
+        repo: https://babaly@bitbucket.org/babaly/bnb_comply_back.git
+        dest: /var/www/bnb_back
+    become: yes
+
+  - name: take ownership of bnb_back folder
+    file:
+        path: /var/www/bnb_back
+        owner: "{{ ansible_effective_user_id }}"
+        group: "{{ ansible_effective_group_id }}"
+    become: yes
+    
+  - name: set permissions for Laravel storage folder
+    file:
+        path: /var/www/bnb_back/storage
+        state: directory
+        recurse: yes
+        mode: '0755'
+    become: yes
+
+  - name: install laravel dependencies
+    composer:
+        command: update
+        working_dir: /var/www/bnb_back
+    become: yes
+
+  - name: copy env file
+    copy:
+        src: /var/www/bnb_back/.env.example
+        remote_src: yes
+        dest: /var/www/bnb_back/.env
+        owner: "{{ ansible_effective_user_id }}"
+        group: "{{ ansible_effective_group_id }}"
+        mode: '0644'
+    become: yes
+
+  - name: copy apache config
+    copy:
+        src: ansible/app.conf
+        dest: /etc/apache2/sites-available/bnb_back.conf
+        owner: "{{ ansible_effective_user_id }}"
+        group: "{{ ansible_effective_group_id }}"
+        mode: '0644'
+    become: yes
+
+  - name: set server name
+    replace:
+        path: /etc/apache2/sites-available/bnb_back.conf
+        regexp: '$SERVER_NAME'
+        replace: '{{ ansible_host }}'
+    become: yes
+
+  - name: enable the new config
+    shell: |
+        a2ensite bnb_back.conf
+        a2dissite 000-default.conf
+        a2enmod rewrite
+        service apache2 restart
+    become: yes
+
+  - name: setup laravel
+    shell: |
+        cd /var/www/bnb_back
+        php artisan key:generate
+    become: yes
+
+   # apache  server started
+  - name: services started   
+    service: name={{ item }} state=restarted enabled=True
+    loop: [ 'httpd']
+     
+
+
+

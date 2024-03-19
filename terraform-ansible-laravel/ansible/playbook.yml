@@ -1,0 +1,125 @@
+- name: Install Docker and Dependencies, Dockerize Laravel app on Amazon Linux
+  hosts: all
+  become: true
+  vars:
+    laravel_app_path: /home/ec2-user/bnb_back
+
+  tasks:
+    - name: Install required packages with DNF
+      dnf:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - "docker"
+        - "git"
+        - "yum-utils"
+        - "device-mapper-persistent-data"
+        - "lvm2"
+        - "amazon-linux-extras"
+      ignore_errors: true
+      register: dnf_result
+
+    
+    - name: Check if Docker is installed
+      fail:
+        msg: "Docker package is not available in the package repositories."
+      when: "'docker' not in dnf_result.results | map(attribute='item') | list"
+
+    - name: Start and enable Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+      ignore_errors: true
+
+    - name: Check if Composer is installed
+      command: "which composer"
+      register: composer_installed
+      ignore_errors: true
+
+    - name: Install Composer if not already installed
+      command: >
+        php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+        php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+        php -r "unlink('composer-setup.php');"
+      when: composer_installed.rc != 0
+
+    - name: Install pip3
+      dnf:
+        name: python3-pip
+        state: present
+      become: true
+      ignore_errors: true
+
+    - name: Get the latest version of Docker Compose URL
+      uri:
+        url: https://api.github.com/repos/docker/compose/releases/latest
+        return_content: yes
+        timeout: 5
+      register: latest_release
+
+    - name: Set the Docker Compose version variable
+      set_fact:
+        docker_compose_version: "{{ latest_release.json.tag_name }}"
+
+    - name: Download Docker Compose binary
+      shell: >
+        curl -L "https://github.com/docker/compose/releases/download/{{ docker_compose_version }}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+      args:
+        creates: /usr/local/bin/docker-compose
+        executable: /bin/bash
+
+    - name: Ensure Docker Compose is downloaded successfully
+      assert:
+        that:
+          - download_result is success
+
+    - name: Show Docker Compose version
+      command: docker-compose --version
+      register: compose_version
+      ignore_errors: true
+
+    - name: Set Docker Compose path for bash users
+      lineinfile:
+        path: "{{ item }}"
+        line: 'export PATH=$PATH:/usr/local/bin'
+        create: yes
+        state: present
+      with_items:
+        - /etc/profile.d/bash_profile.sh
+        - /etc/profile.d/bashrc.sh
+      when: compose_version.rc == 0
+
+    - name: Set Docker Compose path for zsh users
+      lineinfile:
+        path: "{{ item }}"
+        line: 'export PATH=$PATH:/usr/local/bin'
+        create: yes
+        state: present
+      with_items:
+        - /etc/profile.d/zshenv.sh
+        - /etc/zshrc
+      when: compose_version.rc == 0
+
+    - name: Clone laravel project
+      git:
+        repo: https://babaly@bitbucket.org/babaly/bnb_comply_back.git
+        dest: "{{ laravel_app_path }}"
+        update: yes
+
+    - name: Set permissions for Laravel storage and bootstrap/cache folders
+      file:
+        path: "{{ item }}"
+        state: directory
+        recurse: yes
+        mode: "0755"
+      loop:
+        - "{{ laravel_app_path }}/storage"
+        - "{{ laravel_app_path }}/bootstrap/cache"
+
+    # Build and run the container
+    - name: Build and run the container
+      become: true
+      command: |
+        docker-compose build
+        docker-compose up -d
