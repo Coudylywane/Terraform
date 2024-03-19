@@ -1,0 +1,97 @@
+---
+- name: Install Docker, Kubernetes, and kube-apiserver
+  hosts: k8s-master
+
+  tasks:
+    - name: Update apt package list
+      become: true
+      apt:
+        update_cache: yes
+
+    - name: Install Docker
+      become: true
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Add user to docker group
+      become: true
+      user:
+        name: ubuntu # Assuming 'ubuntu' is the user on your instance
+        groups: docker
+        append: yes
+
+    - name: Restart SSH to apply user group changes
+      become: true
+      service:
+        name: ssh
+        state: restarted
+
+    - name: Change permissions for docker socket
+      become: true
+      file:
+        path: /var/run/docker.sock
+        mode: "0777"
+
+    - name: Add Kubernetes apt repository
+      become: true
+      apt_repository:
+        repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+
+    - name: Add Kubernetes apt key
+      become: true
+      shell: curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+
+    - name: Update apt package list after adding Kubernetes repository
+      become: true
+      apt:
+        update_cache: yes
+
+    - name: Install kubelet, kubeadm, kubectl
+      become: true
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Install kube-apiserver using snap
+      become: true
+      snap:
+        name: kube-apiserver
+
+    - name: Initialize Kubernetes cluster
+      become: true
+      command: kubeadm init --pod-network-cidr=10.244.0.0/16
+      register: kubeadm_init_result
+      ignore_errors: true
+
+    - name: Save kubeadm join command
+      when: kubeadm_init_result.rc == 0
+      local_action: shell kubeadm token create --print-join-command > /tmp/kubeadm_join_command
+
+    - name: Create kubeconfig directory
+      become: true
+      file:
+        path: "{{ lookup('env','HOME') }}/.kube"
+        state: directory
+
+    - name: Copy admin.conf to kubeconfig directory
+      become: true
+      command: cp -i /etc/kubernetes/admin.conf "{{ lookup('env','HOME') }}/.kube/config"
+      args:
+        creates: "{{ lookup('env','HOME') }}/.kube/config"
+      register: copy_admin_conf_result
+      when: kubeadm_init_result.rc == 0
+
+    - name: Change ownership of kubeconfig
+      become: true
+      command: chown $(id -u):$(id -g) "{{ lookup('env','HOME') }}/.kube/config"
+      when: copy_admin_conf_result.changed
+
+    - name: Apply Flannel CNI
+      become: true
+      command: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+      when: kubeadm_init_result.rc == 0

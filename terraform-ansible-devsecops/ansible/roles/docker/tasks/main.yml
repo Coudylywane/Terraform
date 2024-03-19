@@ -1,0 +1,31 @@
+---
+- name: Install Docker
+  apt:
+    name: docker.io
+    state: present
+
+- name: Add current user to the docker group
+  user:
+    name: "{{ ansible_env.SUDO_USER | default(ansible_env.USER) }}"
+    groups: docker
+    append: yes
+
+- name: Re-login to apply group changes
+  command: newgrp docker
+  args:
+    creates: "/usr/bin/docker"
+
+- name: Set appropriate permissions for Docker socket
+  file:
+    path: /var/run/docker.sock
+    mode: "0777"
+
+- name: Check if SonarQube container is running
+  command: docker ps -q --filter "name=sonar"
+  register: sonar_container_status
+  changed_when: false
+  ignore_errors: true
+
+- name: Create SonarQube container if not running
+  command: docker run -d --name sonar -p 9000:9000 sonarqube:lts-community
+  when: sonar_container_status.rc != 0

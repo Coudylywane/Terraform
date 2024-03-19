@@ -1,0 +1,42 @@
+---
+- name: Install Jenkins key
+  ansible.builtin.get_url:
+    url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+    dest: /usr/share/keyrings/jenkins-keyring.asc
+
+- name: Add Jenkins repository
+  ansible.builtin.apt_repository:
+    repo: deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/
+    state: present
+    filename: jenkins.list
+
+- name: Ensure dpkg is configured
+  ansible.builtin.command: sudo dpkg --configure -a
+
+- name: Update only the Jenkins package to the latest version
+  apt:
+    name: jenkins
+    state: latest
+
+- name: Install fontconfig
+  ansible.builtin.apt:
+    name: fontconfig
+    state: present
+
+- name: Install java
+  ansible.builtin.apt:
+    name: openjdk-17-jre
+    state: present
+
+- name: Make sure a service unit is running
+  ansible.builtin.systemd:
+    state: started
+    name: jenkins
+    enabled: yes
+
+- name: Display initial admin password
+  ansible.builtin.shell: cat /var/lib/jenkins/secrets/initialAdminPassword
+  register: initial_admin_password
+
+- debug:
+    var: initial_admin_password.stdout_lines

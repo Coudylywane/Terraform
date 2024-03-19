@@ -1,0 +1,11 @@
+shared_credentials_file = "~/.aws/credentials"    //Access key and Secret key file location
+region                  = "us-east-2"             //sydney region
+ami                     = "ami-05fb0b8c1424f266b" // ubuntu ami
+AZ1                     = "us-east-2a"            // avaibility zone
+AZ2                     = "us-east-2b"
+AZ3                     = "us-east-2c"
+PUBLIC_KEY_PATH         = "files/jenkins-key-pair.pub" // key name for ec2, make sure it is created before terrafomr apply
+PRIV_KEY_PATH           = "files/jenkins-key-pair"
+instance_type           = "t2.micro" //type of instance
+instance_class          = "db.t2.micro"
+VM-name                 = ["jenkins_instance", "k8s-master", "k8s-worker"]

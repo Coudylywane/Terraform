@@ -1,0 +1,15 @@
+---
+- name: Download kubectl binary and Install it on Jenkins Server
+  ansible.builtin.get_url:
+    url: https://storage.googleapis.com/kubernetes-release/release/v1.23.0/bin/linux/amd64/kubectl
+    dest: /usr/local/bin/kubectl
+    mode: "a+x"
+
+- name: Check kubectl version
+  command: kubectl version --client
+  ignore_errors: true
+  register: kubectl_version_output
+
+- name: Print kubectl version
+  ansible.builtin.debug:
+    var: kubectl_version_output.stdout_lines

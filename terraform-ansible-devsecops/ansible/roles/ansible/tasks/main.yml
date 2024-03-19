@@ -1,0 +1,15 @@
+---
+- name: Install software-properties-common (required for apt-add-repository)
+  ansible.builtin.apt:
+    name: software-properties-common
+    state: present
+
+- name: Add Ansible PPA
+  ansible.builtin.apt_repository:
+    repo: "ppa:ansible/ansible"
+    state: present
+
+- name: Install Ansible
+  ansible.builtin.apt:
+    name: ansible
+    state: present

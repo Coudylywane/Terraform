@@ -1,0 +1,14 @@
+---
+#
+# Playbook to install Jenkins, Docker and Trivy
+#
+- hosts: jenkins_instance
+  remote_user: ubuntu
+  become: yes
+  become_user: root
+  roles:
+    - { role: docker }
+    - { role: jenkins }
+    - { role: trivy }
+    - { role: ansible }
+    - { role: kubectl }

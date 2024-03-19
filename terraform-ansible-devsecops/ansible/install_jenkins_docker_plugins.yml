@@ -1,0 +1,70 @@
+---
+- hosts: jenkins_instance
+  become: yes
+
+  tasks:
+    - name: Install Jenkins, Docker, and Trivy
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - openjdk-11-jdk
+        - jenkins
+        - docker.io
+        - trivy
+
+    - name: Start and enable Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Install Jenkins plugins
+      jenkins_plugin:
+        name: "{{ item }}"
+        version: "latest"
+      loop:
+        - jdk-tool
+        - sonar
+        - maven-plugin
+        - dependency-check-jenkins
+
+    - name: Configure Sonar Server in Manage Jenkins
+      jenkins_script:
+        script: |
+          import jenkins.model.Jenkins
+          def inst = Jenkins.getInstance()
+          def desc = inst.getDescriptor("hudson.plugins.sonar.SonarGlobalConfiguration")
+          desc.setSonarServerUrl("http://your-sonar-server-url")
+      notify: Restart Jenkins
+
+    - name: Install OWASP Dependency Check Plugins
+      jenkins_plugin:
+        name: "dependency-check-jenkins"
+        version: "latest"
+
+    - name: Docker plugin and credential Setup
+      jenkins_script:
+        script: |
+          import jenkins.model.Jenkins
+          def inst = Jenkins.getInstance()
+          def desc = inst.getDescriptor("com.nirima.jenkins.plugins.docker.DockerCloud")
+          desc.addCloud(new com.nirima.jenkins.plugins.docker.DockerCloud(
+              "docker",
+              null,
+              new com.nirima.jenkins.plugins.docker.DockerAPI(
+                  new com.nirima.jenkins.plugins.docker.DockerAPIConnectionSettings(
+                      null,
+                      null,
+                      null
+                  )
+              ),
+              null
+          ))
+      notify: Restart Jenkins
+
+  handlers:
+    - name: Restart Jenkins
+      service:
+        name: jenkins
+        state: restarted
